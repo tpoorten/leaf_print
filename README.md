@@ -6,7 +6,7 @@ Developers: Tom Poorten, Randi Famula, Mitchell Feldmann
 
 Functions to build:
 
-* read in data
+* read in data - DONE
 * filter SNPs - keep only polymorphic well-behaving (biallelic) SNPs
 * make QAQC plots - sample-wise missing data distribution, ...?
 * filter samples - by quality or vector of arbitrary sample IDs
