@@ -1,4 +1,4 @@
-read_leaf = function(snp_data_file=NULL, ps_qc_file = NULL, sample_qc_file=NULL, sample_meta_file=NULL){
+leaf_read = function(snp_data_file=NULL, ps_qc_file = NULL, sample_qc_file=NULL, sample_meta_file=NULL){
   if(file.exists(snp_data_file)){
     snp_data = read.table(snp_data_file, sep="\t", header=T, stringsAsFactors = F, check.names = F)
     rownames(snp_data) = snp_data$probeset_id
@@ -36,5 +36,21 @@ read_leaf = function(snp_data_file=NULL, ps_qc_file = NULL, sample_qc_file=NULL,
   leaf = list(snp_data        = snp_data, 
               ps_qc           = ps_qc, 
               sample_data     = sample_all_data)
+  return(leaf)
+}
+
+########################################
+# the point of this function is to filter snp_data and ps_qc by values in ConversionType and BestProbeset in ps_qc
+leaf_filter = function(leaf_data = NULL){
+  if(!is.null(leaf_data)){
+    leaf_data$ps_qc = leaf_data$ps_qc[which(leaf_data$ps_qc$ConversionType == "PolyHighResolution" & 
+                                              leaf_data$ps_qc$BestProbeset == 1),]
+    leaf_data$snp_data = leaf_data$snp_data[rownames(leaf_data$ps_qc),]
+    
+  } else {stop("Error: Object Not Found")}
+  
+  leaf = list(snp_data        = leaf_data$snp_data, 
+              ps_qc           = leaf_data$ps_qc, 
+              sample_data     = leaf_data$sample_data)
   return(leaf)
 }

@@ -1,4 +1,3 @@
-rm(list=ls())
 library(here)
 source(paste0(here(),"/src/functions.R"))
 
@@ -10,6 +9,12 @@ dat = leaf_read(snp_data_file   = "input_data/SNP_data.txt",
               )
 
 head(dat$snp_data)
-head(dat$ps_qc)
+nrow(dat$ps_qc)
 head(dat$sample_data)
 # //
+dat1 = leaf_filter(leaf_data = dat)
+
+head(dat1$snp_data)
+head(dat1$ps_qc)
+head(dat1$sample_data)
+
