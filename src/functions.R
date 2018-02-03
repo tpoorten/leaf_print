@@ -1,3 +1,8 @@
+#Functions for the Leaf_print project
+#Tom Poorten, Mitchell Feldmann, Randi Famula
+
+################################################
+#The purpose of this function is to read and compile all sample, SNP, and metadata.
 leaf_read = function(snp_data_file=NULL, ps_qc_file = NULL, sample_qc_file=NULL, sample_meta_file=NULL){
   if(file.exists(snp_data_file)){
     snp_data = read.table(snp_data_file, sep="\t", header=T, stringsAsFactors = F, check.names = F)
@@ -39,6 +44,33 @@ leaf_read = function(snp_data_file=NULL, ps_qc_file = NULL, sample_qc_file=NULL,
   return(leaf)
 }
 
+########################################
+# the point of this function is to filter snp_data and ps_qc by values in ConversionType and BestProbeset in ps_qc
+# this fxn will filter on the columns specified in filter_col1 and filter_col2 by condition1 and condition2
+leaf_filter = function(leaf_data = NULL, filter_col1 = NULL, condition1 = NULL, filter_col2 = NULL, condition2 = NULL){
+  
+  if(!is.null(leaf_data)){
+    
+    if(!is.null(filter_col1)){
+    leaf_data$ps_qc = leaf_data$ps_qc[which(leaf_data$ps_qc[,filter_col1] == condition1),]
+    leaf_data$snp_data = leaf_data$snp_data[rownames(leaf_data$ps_qc),]
+    } else {stop("Error: Require at least one column and one condition")}
+    
+    if(!is.null(filter_col2)){
+      leaf_data$ps_qc = leaf_data$ps_qc[which(leaf_data$ps_qc[,filter_col2] == condition2),]
+      leaf_data$snp_data = leaf_data$snp_data[rownames(leaf_data$ps_qc),]
+    } else {}
+    
+  } else {stop("Error: Object Not Found")}
+  
+  leaf = list(snp_data        = leaf_data$snp_data, 
+              ps_qc           = leaf_data$ps_qc, 
+              sample_data     = leaf_data$sample_data)
+  return(leaf)
+}
+
+########################################
+#Purpose is to recalculate sample call and heterozygous call rates
 
 recalculate_sample_metrics = function(dataList = NULL){
   
@@ -53,3 +85,4 @@ recalculate_sample_metrics = function(dataList = NULL){
   return(dataList)
 }
   
+
