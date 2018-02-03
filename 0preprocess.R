@@ -13,3 +13,7 @@ head(dat$sample_qc)
 head(dat$ps_qc)
 head(dat$sample_metadata)
 # //
+
+## 
+dat2 = recalculate_sample_metrics(dataList = dat)
+# //

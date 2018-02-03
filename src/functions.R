@@ -30,3 +30,24 @@ read_leaf = function(snp_data_file=NULL, sample_qc_file=NULL, ps_qc_file = NULL,
   leaf = list(snp_data = snp_data, sample_qc = sample_qc, ps_qc = ps_qc, sample_metadata = sample_metadata)
   return(leaf)
 }
+
+
+recalculate_sample_metrics = function(dataList = NULL){
+  sample_qc = dataList$sample_qc
+  snp_data = dataList$snp_data
+  
+  # Re-calculated call rate
+  call_rate_recalculated = round(100 * apply(dataList$snp_data, 2, function(x) length(which(x >= 0))) / nrow(dataList$snp_data), digits = 3)
+  dataList$sample_qc$call_rate_recalculated = call_rate_recalculated[match(dataList$sample_qc$Sample.Filename, names(call_rate_recalculated))]
+  
+  # Re-calculated heterozygous rate
+  het_rate_recalculated = round(100 * apply(dataList$snp_data, 2, function(x) length(which(x == 1))) / apply(dataList$snp_data, 2, function(x) length(which(x >= 0))), digits = 3)
+  dataList$sample_qc$het_rate_recalculated = het_rate_recalculated[match(dataList$sample_qc$Sample.Filename, names(het_rate_recalculated))]
+  
+  leaf = list(snp_data        = dataList$snp_data, 
+              sample_qc       = sample_qc, 
+              ps_qc           = dataList$ps_qc, 
+              sample_metadata = dataList$sample_metadata)
+  return(leaf)
+}
+  
