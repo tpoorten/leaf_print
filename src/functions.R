@@ -1,8 +1,8 @@
 #Functions for the Leaf_print project
 #Tom Poorten, Mitchell Feldmann, Randi Famula
 
-########################################
-# the point of this function is to filter snp_data and ps_qc by values in ConversionType and BestProbeset in ps_qc
+################################################
+#The purpose of this function is to read and compile all sample, SNP, and metadata.
 leaf_read = function(snp_data_file=NULL, ps_qc_file = NULL, sample_qc_file=NULL, sample_meta_file=NULL){
   if(file.exists(snp_data_file)){
     snp_data = read.table(snp_data_file, sep="\t", header=T, stringsAsFactors = F, check.names = F)
@@ -48,7 +48,9 @@ leaf_read = function(snp_data_file=NULL, ps_qc_file = NULL, sample_qc_file=NULL,
 # the point of this function is to filter snp_data and ps_qc by values in ConversionType and BestProbeset in ps_qc
 # this fxn will filter on the columns specified in filter_col1 and filter_col2 by condition1 and condition2
 leaf_filter = function(leaf_data = NULL, filter_col1 = NULL, condition1 = NULL, filter_col2 = NULL, condition2 = NULL){
+  
   if(!is.null(leaf_data)){
+    
     if(!is.null(filter_col1)){
     leaf_data$ps_qc = leaf_data$ps_qc[which(leaf_data$ps_qc[,filter_col1] == condition1),]
     leaf_data$snp_data = leaf_data$snp_data[rownames(leaf_data$ps_qc),]
@@ -66,3 +68,21 @@ leaf_filter = function(leaf_data = NULL, filter_col1 = NULL, condition1 = NULL, 
               sample_data     = leaf_data$sample_data)
   return(leaf)
 }
+
+########################################
+#Purpose is to recalculate sample call and heterozygous call rates
+
+recalculate_sample_metrics = function(dataList = NULL){
+  
+  # Re-calculated call rate
+  call_rate_recalculated = round(100 * apply(dataList$snp_data, 2, function(x) length(which(x >= 0))) / nrow(dataList$snp_data), digits = 3)
+  dataList$sample_data$call_rate_recalculated = call_rate_recalculated[match(dataList$sample_data$Sample.Filename, names(call_rate_recalculated))]
+  
+  # Re-calculated heterozygous rate
+  het_rate_recalculated = round(100 * apply(dataList$snp_data, 2, function(x) length(which(x == 1))) / apply(dataList$snp_data, 2, function(x) length(which(x >= 0))), digits = 3)
+  dataList$sample_data$het_rate_recalculated = het_rate_recalculated[match(dataList$sample_data$Sample.Filename, names(het_rate_recalculated))]
+  
+  return(dataList)
+}
+  
+

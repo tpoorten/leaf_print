@@ -13,9 +13,13 @@ table(dat$ps_qc$H.W.p.Value)
 head(dat$sample_data)
 
 # //
+
 dat1 = leaf_filter(leaf_data = dat, filter_col1 = "ConversionType", condition1 = "PolyHighResolution", filter_col2 = "BestProbeset", condition2 = 1)
 
 head(dat1$snp_data)
 nrow(dat1$ps_qc)
 head(dat1$sample_data)
+
+## 
+dat2 = recalculate_sample_metrics(dataList = dat)
 
