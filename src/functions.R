@@ -1,4 +1,4 @@
-read_leaf = function(snp_data_file=NULL, sample_qc_file=NULL, ps_qc_file = NULL, sample_meta_file=NULL){
+read_leaf = function(snp_data_file=NULL, ps_qc_file = NULL, sample_qc_file=NULL, sample_meta_file=NULL){
   if(file.exists(snp_data_file)){
     snp_data = read.table(snp_data_file, sep="\t", header=T, stringsAsFactors = F, check.names = F)
     rownames(snp_data) = snp_data$probeset_id
@@ -26,8 +26,16 @@ read_leaf = function(snp_data_file=NULL, sample_qc_file=NULL, ps_qc_file = NULL,
     } else {stop("Error: invalid filename for sample_meta_file. This file can be omitted.")}
   }
   
-      
-  leaf = list(snp_data = snp_data, sample_qc = sample_qc, ps_qc = ps_qc, sample_metadata = sample_metadata)
+  sample_all_data = NULL
+  if(!is.null(sample_meta_file)){
+    if(file.exists(sample_meta_file)){
+      sample_all_data = merge(sample_qc, sample_metadata, by = 1)
+    } else {stop("Error: invalid filename for sample_meta_file. This file can be omitted.")}
+  }
+  
+  leaf = list(snp_data        = snp_data, 
+              ps_qc           = ps_qc, 
+              sample_data     = sample_all_data)
   return(leaf)
 }
 
