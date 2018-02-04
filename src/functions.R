@@ -47,7 +47,7 @@ leaf_read = function(snp_data_file=NULL, ps_qc_file = NULL, sample_qc_file=NULL,
 ########################################
 # the point of this function is to filter snp_data and ps_qc by values in ConversionType and BestProbeset in ps_qc
 # this fxn will filter on the columns specified in filter_col1 and filter_col2 by condition1 and condition2
-leaf_filter = function(leaf_data = NULL, filter_col1 = NULL, condition1 = NULL, filter_col2 = NULL, condition2 = NULL){
+leaf_filter = function(leaf_data = NULL, filter_col1 = "ConversionType", condition1 = "PolyHighResolution", filter_col2 = "BestProbeset", condition2 = 1){
   
   if(!is.null(leaf_data)){
     
@@ -72,7 +72,7 @@ leaf_filter = function(leaf_data = NULL, filter_col1 = NULL, condition1 = NULL, 
 ########################################
 #Purpose is to recalculate sample call and heterozygous call rates
 
-recalculate_sample_metrics = function(dataList = NULL){
+leaf_recalculate_sample_metrics = function(dataList = NULL){
   
   # Re-calculated call rate
   call_rate_recalculated = round(100 * apply(dataList$snp_data, 2, function(x) length(which(x >= 0))) / nrow(dataList$snp_data), digits = 3)
