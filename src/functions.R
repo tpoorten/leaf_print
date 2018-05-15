@@ -119,17 +119,38 @@ leaf_filter = function(leaf_data = NULL, filter_col1 = "ConversionType", conditi
 ########################################
 #Purpose is to recalculate sample call and heterozygous call rates
 
-leaf_recalculate_sample_metrics = function(dataList = NULL){
+leaf_recalculate_sample_metrics = function(leaf_data = NULL){
+  print("    Adding new columns to leaf$sample_data: call_rate_recalculated, het_rate_recalculated")
   
   # Re-calculated call rate
-  call_rate_recalculated = round(100 * apply(dataList$snp_data, 2, function(x) length(which(x >= 0))) / nrow(dataList$snp_data), digits = 3)
-  dataList$sample_data$call_rate_recalculated = call_rate_recalculated[match(dataList$sample_data$Sample.Filename, names(call_rate_recalculated))]
+  call_rate_recalculated = round(100 * apply(leaf_data$snp_data, 2, function(x) length(which(x >= 0))) / nrow(leaf_data$snp_data), digits = 3)
+  leaf_data$sample_data$call_rate_recalculated = call_rate_recalculated[match(leaf_data$sample_data$Sample.Filename, names(call_rate_recalculated))]
   
   # Re-calculated heterozygous rate
-  het_rate_recalculated = round(100 * apply(dataList$snp_data, 2, function(x) length(which(x == 1))) / apply(dataList$snp_data, 2, function(x) length(which(x >= 0))), digits = 3)
-  dataList$sample_data$het_rate_recalculated = het_rate_recalculated[match(dataList$sample_data$Sample.Filename, names(het_rate_recalculated))]
+  het_rate_recalculated = round(100 * apply(leaf_data$snp_data, 2, function(x) length(which(x == 1))) / apply(leaf_data$snp_data, 2, function(x) length(which(x >= 0))), digits = 3)
+  leaf_data$sample_data$het_rate_recalculated = het_rate_recalculated[match(leaf_data$sample_data$Sample.Filename, names(het_rate_recalculated))]
   
-  return(dataList)
+  return(leaf_data)
 }
   
+
+########################################
+# Automatically add on suffix for replicates
+leaf_mark_replicate_IDs = function(leaf_data = NULL, id_column_name = "ID"){
+  print("    Adding new column to leaf$sample_data: ID_reps")
+  leaf_data$sample_data = leaf_data$sample_data[order(leaf_data$sample_data$ID),]
+  leaf_data$sample_data$ID_reps = leaf_data$sample_data$ID
+  leaf_data$sample_data$rep = FALSE
+  leaf_data$sample_data$rep[which(leaf_data$sample_data$ID %in% names(table(leaf_data$sample_data$ID))[which(table(leaf_data$sample_data$ID) > 1)])] = TRUE
+  leaf_data$sample_data$ID_reps[which(leaf_data$sample_data$rep)] = unlist(tapply(leaf_data$sample_data$ID[which(leaf_data$sample_data$rep)], leaf_data$sample_data$ID[which(leaf_data$sample_data$rep)], function(x) paste(x,"rep",LETTERS[1:length(x)], sep = "_")))
+  
+  if(! identical(rownames(leaf_data$sample_data), colnames(leaf_data$snp_data))){
+    print("    Re-sorting columns in leaf$snp_data based on sample order leaf$sample_data")
+    leaf_data$snp_data = leaf_data$snp_data[,match(rownames(leaf_data$sample_data), colnames(leaf_data$snp_data))]
+  }
+
+  return(leaf_data)
+}
+  
+
 
