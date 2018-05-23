@@ -1,6 +1,11 @@
 #Functions for the Leaf_print project
 #Tom Poorten, Mitchell Feldmann, Randi Famula
 
+# To Do
+# confid - make function to make figure of confidence scores
+# leaf_analyze_matches() - catch error if "call_rate_recalculated" is not present
+# leaf_analyze_matches() - knownPO or poCalled?
+
 ################################################
 # The purpose of this function is to read and compile all sample, SNP, and metadata.
 leaf_read = function(snp_data_file=NULL, ps_qc_file = NULL, sample_qc_file=NULL, sample_meta_file=NULL, snp_meta_file = NULL){
@@ -143,9 +148,7 @@ leaf_mark_replicate_IDs = function(leaf_data = NULL, id_column_name = "ID"){
   leaf_data$sample_data$rep = FALSE
   leaf_data$sample_data$rep[which(leaf_data$sample_data$ID %in% names(table(leaf_data$sample_data$ID))[which(table(leaf_data$sample_data$ID) > 1)])] = TRUE
   leaf_data$sample_data$ID_reps[which(leaf_data$sample_data$rep)] = unlist(tapply(leaf_data$sample_data$ID[which(leaf_data$sample_data$rep)], leaf_data$sample_data$ID[which(leaf_data$sample_data$rep)], function(x) paste(x,LETTERS[1:length(x)], sep = "_rep")))
-  
-  # leaf_data$sample_data$ID_reps[which(leaf_data$sample_data$rep)] = unlist(tapply(leaf_data$sample_data$ID[which(leaf_data$sample_data$rep)], leaf_data$sample_data$ID[which(leaf_data$sample_data$rep)], function(x) paste(x,LETTERS[1:length(x)], sep = "_rep")))
-  
+
   if(! identical(rownames(leaf_data$sample_data), colnames(leaf_data$snp_data))){
     print("    Re-sorting columns in leaf$snp_data based on sample order in leaf$sample_data")
     leaf_data$snp_data = leaf_data$snp_data[,match(rownames(leaf_data$sample_data), colnames(leaf_data$snp_data))]
@@ -209,19 +212,19 @@ leaf_confidence_filtering = function(leaf_data = NULL, confidence_file = NULL, c
 
 #########################################
 # Analyze matches
-leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinship.cutoff = 0.44, IBS0.cutoff = 0.002){
-  # leaf_data = dat3
+leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinship.cutoff = 0.44, IBS0.cutoff = 0.002, matches.samples.keep = NULL, matches.samples.exclude = NULL){
+  # leaf_data = dat1
   # kinship.cutoff = 0.44
   # IBS0.cutoff = 0.002
-  
+  # matches.samples.keep = read.table("input_data/matches_samples_to_keep.txt", header = F, stringsAsFactors = F)[,1]
+  # matches.samples.exclude = read.table("input_data/matches_samples_to_exclude.txt", header = F, stringsAsFactors = F)[,1]
+    
   ## get known relationships
   knownPO = c(apply(leaf_data$sample_data[,c("ID_reps","Parent1")], 1, function(x) paste(sort(x), collapse = "__")), apply(leaf_data$sample_data[,c("ID_reps","Parent2")], 1, function(x) paste(sort(x), collapse = "__")))
   knownPO = grep("Unknown",knownPO, invert = T, value = T)
   knownPO = unique(grep("__",knownPO, value = T))
   
   knownPO2 = knownPO
-  # pairi = "63C125P039__75C034P105"
-  # pairi = "60C019P002__Rockhill_Derivative"
   ## add Identifier from ID_reps column
   for(pairi in knownPO){
     allIds = sapply(unlist(strsplit(pairi,"__")), function(x) ifelse(!x %in% leaf_data$sample_data$ID, x, list(leaf_data$sample_data$ID_reps[which(leaf_data$sample_data$ID %in% x)])))
@@ -231,7 +234,6 @@ leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinsh
     knownPO2 = unique(c(knownPO2, newPairs))
     rm(allIds, newPairs)
   }
-  # tail(knownPO2, 20)
   knownPO = knownPO2; rm(knownPO2, pairi)
   # //
   
@@ -270,12 +272,10 @@ leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinsh
   matches.agg.df$matchesSortedTrim = unlist(lapply(lapply(lapply(sapply(matches.agg.df$matchesSorted, function(x) strsplit(x, "__") ), function(y) sapply(y, function(z) unlist(strsplit(z,"_rep"))[1])), function(z) names(z)[which(!duplicated(z))]), function(a) paste(a, collapse="__")))
   
   # 3. find IDs that are pedigree confirmed by the data
-  # update Tribute - USDA ped = EB18 x MDUS 4258; emperical ped = MDUS_5189 x Everbearing_372
-  # PI551863-Himiko - previous analysis, I removed this sample with gsub, not sure why
   # get table with known and confirmed PO relationships, set looser IBS0 cutoff here to include borderline cases
   ibd.PO.Known.Conf = ibd.robust.coeff[which(ibd.robust.coeff$relation == "PO" & ibd.robust.coeff$IBS0 < 0.006 & ibd.robust.coeff$kinship > 0.1),]
-  ibd.PO.Known.Conf$pair2 = apply(ibd.PO.Known.Conf[,1:2], 1, function(x) paste(sort(gsub("_rep[A-Z]","",x)), collapse = "__"))
-  ibd.PO.Known.Conf = ibd.PO.Known.Conf[which(!duplicated(ibd.PO.Known.Conf$pair2)),]
+  # ibd.PO.Known.Conf$pair2 = apply(ibd.PO.Known.Conf[,1:2], 1, function(x) paste(sort(gsub("_rep[A-Z]","",x)), collapse = "__"))
+  # ibd.PO.Known.Conf = ibd.PO.Known.Conf[which(!duplicated(ibd.PO.Known.Conf$pair2)),]
   
   # Check pedigree
   matches.agg.df$checkPed = FALSE
@@ -288,40 +288,31 @@ leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinsh
   matches.agg.df$IdConfirmedNumSupport[which(matches.agg.df$checkPed)] = unlist(lapply(lapply(matches.agg.df$matchesSortedTrim[which(matches.agg.df$checkPed)], function(x) unlist(lapply( strsplit(x, "__"), function(y) sapply(y, function(z) length(grep(z, ibd.PO.Known.Conf$pair))  )))), function(x) ifelse(length(names(x[which(x==max(x) & x != 0)]))>0, (x[which(x==max(x) & x != 0)]), NA)))
   matches.agg.df$checkPedRes[which(matches.agg.df$checkPed)] = unlist(lapply(lapply(matches.agg.df$matchesSortedTrim[which(matches.agg.df$checkPed)], function(x) unlist(lapply( strsplit(x, "__"), function(y) sapply(y, function(z) length(grep(z, ibd.PO.Known.Conf$pair))  )))), function(x) paste(x, collapse=",")))
   #
+  
   # add numConfirmPOrels to leaf_data$sample_data
   leaf_data$sample_data$numConfirmPOrels = NA
-  numConfirmPOrels = table(gsub("_rep[A-Z]","",c(ibd.PO.Known.Conf$ID1, ibd.PO.Known.Conf$ID2)))
+  # numConfirmPOrels = table(gsub("_rep[A-Z]","",c(ibd.PO.Known.Conf$ID1, ibd.PO.Known.Conf$ID2)))
+  numConfirmPOrels = table(c(ibd.PO.Known.Conf$ID1, ibd.PO.Known.Conf$ID2))
   leaf_data$sample_data$numConfirmPOrels = numConfirmPOrels[match(leaf_data$sample_data$Sample.Filename, names(numConfirmPOrels))]
+  
   # add numFailPOrels to leaf_data$sample_data
   ibd.PO.Known.Fail = ibd.robust.coeff[which(ibd.robust.coeff$relation == "PO" & ibd.robust.coeff$IBS0 > 0.006 ),]
-  ibd.PO.Known.Fail$pair2 = apply(ibd.PO.Known.Fail[,1:2], 1, function(x) paste(sort(gsub("_rep[A-Z]","",x)), collapse = "__"))
-  ibd.PO.Known.Fail = ibd.PO.Known.Fail[which(!duplicated(ibd.PO.Known.Fail$pair2)),]
+  # ibd.PO.Known.Fail$pair2 = apply(ibd.PO.Known.Fail[,1:2], 1, function(x) paste(sort(gsub("_rep[A-Z]","",x)), collapse = "__"))
+  # ibd.PO.Known.Fail = ibd.PO.Known.Fail[which(!duplicated(ibd.PO.Known.Fail$pair2)),]
   leaf_data$sample_data$numFailPOrels = NA
-  numFailPOrels = table(gsub("_rep[A-Z]","",c(ibd.PO.Known.Fail$ID1, ibd.PO.Known.Fail$ID2)))
+  # numFailPOrels = table(gsub("_rep[A-Z]","",c(ibd.PO.Known.Fail$ID1, ibd.PO.Known.Fail$ID2)))
+  numFailPOrels = table(c(ibd.PO.Known.Fail$ID1, ibd.PO.Known.Fail$ID2))
   leaf_data$sample_data$numFailPOrels = numFailPOrels[match(leaf_data$sample_data$Sample.Filename, names(numFailPOrels))]
   #
   
-  # Manual edits
-  # 1. I am pretty sure what is called 05C137P006 is actually 39C082P019. I think that was part of the pipetting mistake from Batch 3. 
-  #       I don’t know if there is any way for you to check it or if it just should be dropped from the dataset.
-  # 2. 
-  # I went through this list. I clearly made a mistake in the submission of:
-  # 05C137P006- not on Tom’s list, but I am almost positive that I submitted 10C157P001 instead
-  # 58C046P002_1AAAB (really submitted Monterey) # AUTOMATICALLY CORRECTED BY PEDIGREE CHECKING
-  # PI551529_1BBAA (really submitted San Andreas) # AUTOMATICALLY CORRECTED BY PEDIGREE CHECKING
-  # PI551614_1BBAA (really submitted Portola) # AUTOMATICALLY CORRECTED BY PEDIGREE CHECKING
-  # PI551799_1BBAA (really submitted Cabrillo) # AUTOMATICALLY CORRECTED BY PEDIGREE CHECKING
-  # make manual edits
-  matches.agg.df$IdConfirmed[grep("05C137P006_repB", matches.agg.df$matches)] = "39C082P019"
-  matches.agg.df$IdConfirmed[grep("37C020P045_repB", matches.agg.df$matches)] = "37C020P045_repB"
-  matches.agg.df$IdConfirmed[grep("64C028P018", matches.agg.df$matches)] = "64C028P018"
-  matches.agg.df$IdConfirmed[grep("Sitka", matches.agg.df$matches)] = "Sitka"
-  matches.agg.df$IdConfirmed[grep("Tribute", matches.agg.df$matches)] = "Tribute"
-  matches.agg.df$IdConfirmed[grep("Sparkle", matches.agg.df$matches)] = "Sparkle"
-  matches.agg.df$IdConfirmed[grep("Tago", matches.agg.df$matches)] = "Tago"
-  matches.agg.df$IdConfirmed[grep("Gorella", matches.agg.df$matches)] = "Gorella"
-  matches.agg.df$IdConfirmed[grep("11C018P001", matches.agg.df$matches)] = "11C018P001" # random pick of 1 of 2 fullsibs?
-  matches.agg.df$IdConfirmed[grep("Midway", matches.agg.df$matches)] = "Midway" # matches Early_Midway, so keep 1 -> Midway
+  # Force keep IDs for a set of specified ID_rep's
+  matches.agg.df$force.keep = FALSE
+  if(!is.null(matches.samples.keep)){
+    for(i in 1:length(matches.samples.keep)){
+      matches.agg.df$force.keep[grep(matches.samples.keep[i], matches.agg.df$matches)] = TRUE
+      matches.agg.df$IdConfirmed[grep(matches.samples.keep[i], matches.agg.df$matches)] = matches.samples.keep[i]
+    }
+  }
   
   # for cases where pedigree doesn't find correct ID - combine IDs
   matches.agg.df$ambiguous = FALSE
@@ -340,7 +331,6 @@ leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinsh
   
   ############
   ## Add annotation to sampleInfo - info on matches, pedigree hits
-  # sampleInfo_all_cels = read.csv("Sample_Metadata/sampleInfo_all_cels.csv", stringsAsFactors = F, header=T)
   sampleInfo_all_cels = leaf_data$sample_data
   #
   # colnames(sampleInfo_all_cels)
@@ -402,27 +392,27 @@ leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinsh
   sampleInfo_all_cels$UseDownstream[which(!sampleInfo_all_cels$matchOccur & sampleInfo_all_cels$Pass.Fail == "Pass")] = TRUE
   
   # Get only table of known replicates
-  sampleInfo_reps = sampleInfo_all_cels[which(sampleInfo_all_cels$rep),] 
+  # sampleInfo_reps = sampleInfo_all_cels[which(sampleInfo_all_cels$rep),] 
   #
-  # Check by eye
-  # Brighton - 72C271P105_repA, 72C271P105_repB - do not match
-  #       - 72C271P105_repA is pedigree confirmed as Brighton, although IBD numbers are borderline
-  #       - 72C271P105_repB is falsified as Brighton
-  # Edit manually
-  # 
-  sampleInfo_all_cels$UseDownstream[which(sampleInfo_all_cels$ID_reps == "72C271P105_repA")] = TRUE
-  sampleInfo_all_cels$UseDownstream[which(sampleInfo_all_cels$ID_reps == "72C271P105_repB")] = FALSE
+  # Exclude
+  if(!is.null(matches.samples.exclude)){
+    for(i in 1:length(matches.samples.exclude)){
+      sampleInfo_all_cels$UseDownstream[which(sampleInfo_all_cels$ID_reps == matches.samples.exclude[i])] = FALSE
+    }
+  }
   
   # For a few ID, need to keep both replicates, bc each rep was used in GWAS
-  sampleInfo_all_cels$UseDownstream[which(sampleInfo_all_cels$ID_reps == "51S001P001_repB")] = TRUE
-  sampleInfo_all_cels$UseDownstream[which(sampleInfo_all_cels$ID_reps == "65CA1501_repA")] = TRUE
-  
+  if(!is.null(matches.samples.keep)){
+    for(i in 1:length(matches.samples.keep)){
+      sampleInfo_all_cels$UseDownstream[which(sampleInfo_all_cels$ID_reps == matches.samples.keep[i])] = TRUE
+      # print(sampleInfo_all_cels$UseDownstream[which(sampleInfo_all_cels$ID_reps == matches.samples.keep[i])])
+    }
+  }
+
   # /////
   
   ## Add columns to sampleInfo
   # colnames(sampleInfo_all_cels)
-  # sampleInfo = cbind(sampleInfo, sampleInfo_all_cels[match(sampleInfo$Sample.Filename, sampleInfo_all_cels$Sample.Filename), 
-                                                     # c("matchOccur","matches","matchOccurAmbig","matchIDConfirmed","ID_reps_amb","UseDownstream")])
   leaf_data$sample_data = sampleInfo_all_cels[match(colnames(leaf_data$snp_data), rownames(sampleInfo_all_cels)),]
   
   if(identical(rownames(leaf_data$ps_qc), rownames(leaf_data$snp_data))){
@@ -670,11 +660,6 @@ leaf_duo_ibd_king_pedigree = function(leaf_data = NULL, ibd.coeff = NULL, kinshi
   results = list(duo.results.pairs = putPO, duo.results.pedigree = putPed)
   return(results)
   
-  # write.csv(putPO, "Pedigree/putative_pedigree_KING_duo_results.csv", row.names = F)
-  # write.csv(putPed, "Pedigree/putative_pedigree_KING_trioConversion_results.csv", row.names = F)
-  # 
-  # putPO.borderline = ibd.coeff[which((ibd.coeff$IBS0 < 0.01 & ibd.coeff$kinship > .1 & ibd.coeff$kinship < .4) | ibd.coeff$KingCall == "PO failed - borderline"),]
-  # write.csv(putPO.borderline, "Pedigree/KING_results_cut0.01.csv", row.names = F)
 }
 
 
