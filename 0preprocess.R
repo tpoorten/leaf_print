@@ -37,7 +37,8 @@ View(dat1$sample_data)
 
 ## Filter genotype calls with Confidence Scores
 dat1 = leaf_confidence_filtering(leaf_data = dat1, 
-                                 confidence_file = "input_data/confidences_filterRecommended.txt", 
+                                 # confidence_file = "input_data/confidences_filterRecommended.txt", 
+                                 confidence_file = "input_data/SNP_data_confidence.txt", 
                                  cutoff.confidence = 0.01)
 View(dat1$sample_data)
 dim(dat1$snp_data)
@@ -146,6 +147,8 @@ ggplot(trio.df,
        aes(ttr, total.tests, text=trio, color=ID.year)) + geom_point(size=1) + scale_color_gradient(low = "red", high="green")
 ggplotly()
 
+trio.calls.df = trio.df[which(trio.df$ttr < 0.01),]
+write.csv(trio.calls.df, "trio_calls_pedigree.csv", row.names = F)
 # //
 
 
@@ -164,11 +167,13 @@ ggplot(ibd.robust.coeff[which(ibd.robust.coeff$IBS0 < 0.02),], aes(IBS0, kinship
   geom_vline(xintercept = 0.001, linetype="dashed") + geom_vline(xintercept = 0.002, linetype="dashed")
 
 ibd.robust.coeff.filter = ibd.robust.coeff[which(ibd.robust.coeff$IBS0 < 0.01),]
+ibd.robust.coeff.filter = ibd.robust.coeff[which(ibd.robust.coeff$IBS0 < 1),]
 ids.filter = unique(c(ibd.robust.coeff.filter$ID1, ibd.robust.coeff.filter$ID2))
 rm(ibd.robust, ibd.robust.coeff)
 
 # Process IBD-KING results
 ibd.robust.coeff.filter.res = leaf_duo_ibd_king_process(leaf_data = dat1, ibd.coeff = ibd.robust.coeff.filter)
+poFailed = ibd.robust.coeff.filter.res$pair[which(ibd.robust.coeff.filter.res$KingCall == "PO failed")]
 
 ggplot(ibd.robust.coeff.filter.res, aes(IBS0, kinship, color=relation, text=pair)) + geom_point(alpha=0.7,size=.5) +
   geom_vline(xintercept = 0.001, linetype="dashed") + geom_vline(xintercept = 0.002, linetype="dashed")
@@ -185,4 +190,17 @@ ibd.robust.calls = leaf_duo_ibd_king_pedigree(leaf_data = dat1, ibd.coeff = ibd.
 duo.res = ibd.robust.calls$duo.results.pairs
 duo.ped = ibd.robust.calls$duo.results.pedigree
 
+# # skip cases were Offspring and a Parent are replicates - NEED TO CATCH CASES WITH NA IN PARENT COLUMNS
+# duo.ped = duo.ped[ ifelse(gsub("_rep[A-Z]","", duo.ped$ID.name) == gsub("_rep[A-Z]","", duo.ped$Parent1.name) | 
+#                             gsub("_rep[A-Z]","", duo.ped$ID.name) == gsub("_rep[A-Z]","", duo.ped$Parent2.name), FALSE, TRUE)
+#                    ,]
+# # skip cases were Parent1 and Parent2 are replicates
+# duo.ped = duo.ped[ ifelse(gsub("_rep[A-Z]","", duo.ped$Parent2.name) == gsub("_rep[A-Z]","", duo.ped$Parent1.name), FALSE, TRUE) ,]
+
+
+# consolidate 2 pedigrees
+ped.consolidated = leaf_consolidate_pedigrees(ped1 = trio.calls.df[,c("ID.name","Parent1.name","Parent2.name")],
+                                              ped2 = duo.ped[,c("ID.name","Parent1.name","Parent2.name")], 
+                                              resolve.conflict = "ped1")
+table(ped.consolidated$notes)
 # //

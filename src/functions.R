@@ -3,8 +3,7 @@
 
 # To Do
 # confid - make function to make figure of confidence scores
-# leaf_analyze_matches() - catch error if "call_rate_recalculated" is not present
-# leaf_analyze_matches() - knownPO or poCalled?
+# leaf_analyze_matches() - knownPO or poKnown?
 
 ################################################
 # The purpose of this function is to read and compile all sample, SNP, and metadata.
@@ -218,7 +217,10 @@ leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinsh
   # IBS0.cutoff = 0.002
   # matches.samples.keep = read.table("input_data/matches_samples_to_keep.txt", header = F, stringsAsFactors = F)[,1]
   # matches.samples.exclude = read.table("input_data/matches_samples_to_exclude.txt", header = F, stringsAsFactors = F)[,1]
-    
+  
+  ## Recalculate sample metrics
+  leaf_data = leaf_recalculate_sample_metrics(leaf_data = leaf_data)
+  
   ## get known relationships
   knownPO = c(apply(leaf_data$sample_data[,c("ID_reps","Parent1")], 1, function(x) paste(sort(x), collapse = "__")), apply(leaf_data$sample_data[,c("ID_reps","Parent2")], 1, function(x) paste(sort(x), collapse = "__")))
   knownPO = grep("Unknown",knownPO, invert = T, value = T)
@@ -332,10 +334,8 @@ leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinsh
   ############
   ## Add annotation to sampleInfo - info on matches, pedigree hits
   sampleInfo_all_cels = leaf_data$sample_data
-  #
-  # colnames(sampleInfo_all_cels)
-  # sampleInfo_all_cels2 = sampleInfo_all_cels[,c(9:14,39)]
-  #
+
+    #
   sampleInfo_all_cels$matchOccur = FALSE
   sampleInfo_all_cels$matches = NA
   sampleInfo_all_cels$matchOccurAmbig = NA
@@ -391,8 +391,6 @@ leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinsh
   sampleInfo_all_cels$UseDownstream[which((!sampleInfo_all_cels$matchIDConfirmed %in% c("rep_ID","ambiguous_ID","falsified_ID")) & sampleInfo_all_cels$matchOccur & sampleInfo_all_cels$Pass.Fail == "Pass")] = TRUE
   sampleInfo_all_cels$UseDownstream[which(!sampleInfo_all_cels$matchOccur & sampleInfo_all_cels$Pass.Fail == "Pass")] = TRUE
   
-  # Get only table of known replicates
-  # sampleInfo_reps = sampleInfo_all_cels[which(sampleInfo_all_cels$rep),] 
   #
   # Exclude
   if(!is.null(matches.samples.exclude)){
@@ -412,7 +410,6 @@ leaf_analyze_matches = function(leaf_data = NULL, ibd.robust.coeff = NULL, kinsh
   # /////
   
   ## Add columns to sampleInfo
-  # colnames(sampleInfo_all_cels)
   leaf_data$sample_data = sampleInfo_all_cels[match(colnames(leaf_data$snp_data), rownames(sampleInfo_all_cels)),]
   
   if(identical(rownames(leaf_data$ps_qc), rownames(leaf_data$snp_data))){
@@ -449,8 +446,9 @@ leaf_trio_pedigree = function(leaf_data = NULL, ibd.coeff = NULL, sample.ids = N
   trio.missing.snps = list()
   
   #Loopy loop i=969
+  pb <- txtProgressBar(min = 0, max = length(sample.ids), style = 3)
   for(i in 1:length(sample.ids)){
-    
+    setTxtProgressBar(pb, i)
     #finds all possible parents of individual i
     poss.par = c(ibd.coeff[which(ibd.coeff$ID1 == sample.ids[i]),2],ibd.coeff[which(ibd.coeff$ID2 == sample.ids[i]),1])
     if(length(poss.par) > 1){ # all(poss.par %in% colnames(snp))
@@ -484,14 +482,14 @@ leaf_trio_pedigree = function(leaf_data = NULL, ibd.coeff = NULL, sample.ids = N
             trio.missing.snps = c(trio.missing.snps, list(missing.snps))
             names(trio.missing.snps)[length(trio.missing.snps)] = paste(colnames(trio), collapse ="__")
             
-            print(c(i,j,k))
+            # print(c(i,j,k))
             rm(mendel.errors, missing.snps, trio)
           # }
         } #end k loop
       } # end j loop
     }
   } # end i loop
-  
+  close(pb)
   # //
   
   # trio-wise
@@ -520,14 +518,19 @@ leaf_trio_pedigree = function(leaf_data = NULL, ibd.coeff = NULL, sample.ids = N
 
 ###########################################################
 # Process IBD-KING results
-leaf_duo_ibd_king_process = function(leaf_data = NULL, ibd.coeff = NULL) {
+leaf_duo_ibd_king_process = function(leaf_data = NULL, ibd.coeff = NULL, IBS0.cutoff.max = 0.002) {
   
   # ibd.coeff = ibd.robust.coeff.filter
-  # leaf_data = dat4
+  # leaf_data = dat1
   
   ##
   sampleInfo.ped = leaf_data$sample_data[which(leaf_data$sample_data$UseDownstream),c("ID","ID_reps","ID_reps_amb","Parent1","Parent2")]
   sampleInfo.ped$parentsPair = apply(sampleInfo.ped[,c("Parent1","Parent2")], 1, function(x) paste(sort(x), collapse = "__"))
+  # get replicates
+  replicatePairs = grep("__", 
+                        tapply(sampleInfo.ped$ID_reps_amb, sampleInfo.ped$ID, function(x) paste(sort(x), collapse = "__")), 
+                        value=T)
+  
   # full-sibs
   familiesList = tapply(sampleInfo.ped$ID_reps_amb, sampleInfo.ped$parentsPair, c)
   familiesList = familiesList[which(names(familiesList) != "")]
@@ -536,7 +539,9 @@ leaf_duo_ibd_king_process = function(leaf_data = NULL, ibd.coeff = NULL) {
   familiesList = lapply(familiesList, function(x) { xx = data.frame(t(combn(x, 2)), stringsAsFactors = F); 
   apply(xx, 1, function(y) paste(sort(y), collapse = "__"))})
   fullsibs = unlist(familiesList)
-  length(fullsibs)
+  # length(fullsibs)
+  fullsibs = setdiff(fullsibs, replicatePairs) # remove replicatePairs
+  
   #
   # half-sibs
   ped1 = sampleInfo.ped[,c("ID_reps_amb","Parent1")]
@@ -549,27 +554,27 @@ leaf_duo_ibd_king_process = function(leaf_data = NULL, ibd.coeff = NULL) {
   poList = lapply(poList, function(x) { xx = data.frame(t(combn(x, 2)), stringsAsFactors = F); 
   apply(xx, 1, function(y) paste(sort(y), collapse = "__"))})
   poList = unlist(poList)
-  halfsibs = poList[which(!poList %in% fullsibs)]
+  halfsibs = setdiff(poList, fullsibs)
+  halfsibs = setdiff(halfsibs, replicatePairs)
   
   # POs
-  poCalled = apply(ped1, 1, function(y) paste(sort(y), collapse = "__"))
-  poCalled = grep("Unknown",  poCalled, value=T, invert = T)
-  poCalled = grep("__",  poCalled, value=T)
+  poKnown = apply(ped1, 1, function(y) paste(sort(y), collapse = "__"))
+  poKnown = grep("Unknown",  poKnown, value=T, invert = T)
+  poKnown = grep("__",  poKnown, value=T)
   rm(ped1, familiesList)
   
-  poCalled2 = poCalled
+  poKnown2 = poKnown
   ## add Identifier from ID_reps column
-  for(pairi in poCalled){
+  for(pairi in poKnown){
     allIds = sapply(unlist(strsplit(pairi,"__")), function(x) ifelse(!x %in% leaf_data$sample_data$ID, x, list(leaf_data$sample_data$ID_reps[which(leaf_data$sample_data$ID %in% x)])))
     newPairs = unique(c(sapply(c(sapply(allIds[[1]], function(y) paste(y, allIds[[2]], sep="__"))), function(z) paste(sort(c(unlist(strsplit(z, "__")))),collapse="__")),
                         sapply(c(sapply(allIds[[2]], function(y) paste(y, allIds[[1]], sep="__"))), function(z) paste(sort(c(unlist(strsplit(z, "__")))),collapse="__"))
     ))
-    poCalled2 = unique(c(poCalled2, newPairs))
+    poKnown2 = unique(c(poKnown2, newPairs))
     rm(allIds, newPairs)
   }
-  # tail(poCalled2, 20)
-  poCalled = poCalled2; rm(poCalled2, pairi)
-  
+  # tail(poKnown2, 20)
+  poKnown = poKnown2; rm(poKnown2, pairi)
   
   
   ##
@@ -578,7 +583,8 @@ leaf_duo_ibd_king_process = function(leaf_data = NULL, ibd.coeff = NULL) {
   ), collapse = "__"))
   
   ibd.coeff$relation = "Unknown"
-  ibd.coeff$relation[which(ibd.coeff$pair %in% poCalled)] = "PO - recorded"
+  ibd.coeff$relation[which(ibd.coeff$pair %in% replicatePairs)] = "Replicate pair"
+  ibd.coeff$relation[which(ibd.coeff$pair %in% poKnown)] = "PO - recorded"
   ibd.coeff$relation[which(ibd.coeff$pair %in% fullsibs)] = "Fullsibs - recorded"
   ibd.coeff$relation[which(ibd.coeff$pair %in% halfsibs)] = "Halfsibs - recorded"
   
@@ -586,10 +592,23 @@ leaf_duo_ibd_king_process = function(leaf_data = NULL, ibd.coeff = NULL) {
   ########
   # Make calls (SNP error rate from technical replicates = 0.00099 and 0.00107)
   ibd.coeff$KingCall = "Unknown"
-  ibd.coeff$KingCall[which(ibd.coeff$IBS0 < 0.002 & ibd.coeff$kinship > 0.1 & ibd.coeff$relation != "PO - recorded")] = "PO called - New"
-  ibd.coeff$KingCall[which(ibd.coeff$IBS0 < 0.002 & ibd.coeff$kinship > 0.1 & ibd.coeff$relation == "PO - recorded")] = "PO called - Confirmed"
-  ibd.coeff$KingCall[which(!(ibd.coeff$IBS0 < 0.002 & ibd.coeff$kinship > 0.1) & ibd.coeff$relation == "PO - recorded")] = "PO failed"
-  ibd.coeff$KingCall[which((ibd.coeff$IBS0 < 0.01 & ibd.coeff$kinship > 0.1) & ibd.coeff$KingCall == "PO failed")] = "PO failed - borderline"
+  ibd.coeff$KingCall[which(ibd.coeff$IBS0 < IBS0.cutoff.max & 
+                             ibd.coeff$kinship > 0.4 &
+                             ibd.coeff$relation == "replicate pair")] = "Replicate pair - Confirmed"
+  ibd.coeff$KingCall[which(ibd.coeff$IBS0 < IBS0.cutoff.max & 
+                             # ibd.coeff$kinship > 0.1 & 
+                             ibd.coeff$kinship < 0.4 & 
+                             ibd.coeff$relation != "PO - recorded")] = "PO called - New"
+  ibd.coeff$KingCall[which(ibd.coeff$IBS0 < IBS0.cutoff.max & 
+                             # ibd.coeff$kinship > 0.1 &
+                             ibd.coeff$kinship < 0.4 & 
+                             ibd.coeff$relation == "PO - recorded")] = "PO called - Confirmed"
+  ibd.coeff$KingCall[which(!(ibd.coeff$IBS0 < IBS0.cutoff.max 
+                             # & ibd.coeff$kinship > 0.1
+                             ) & ibd.coeff$relation == "PO - recorded")] = "PO failed"
+  ibd.coeff$KingCall[which((ibd.coeff$IBS0 < 0.01 
+                            # & ibd.coeff$kinship > 0.1
+                            ) & ibd.coeff$KingCall == "PO failed")] = "PO failed - borderline"
   ibd.coeff$KingCall[which(ibd.coeff$relation == "Fullsibs - recorded")] = "Fullsibs - recorded"
   ibd.coeff$KingCall[which(ibd.coeff$relation == "Halfsibs - recorded")] = "Halfsibs - recorded"
   
@@ -602,7 +621,7 @@ leaf_duo_ibd_king_process = function(leaf_data = NULL, ibd.coeff = NULL) {
 # Get pedigree from IBD-KING
 leaf_duo_ibd_king_pedigree = function(leaf_data = NULL, ibd.coeff = NULL, kinship.cutoff.min = 0.1, kinship.cutoff.max = 0.4, IBS0.cutoff.max = 0.002) {
   
-  # leaf_data = dat4
+  # leaf_data = dat1
   # ibd.coeff = ibd.robust.coeff.filter.res
   # kinship.cutoff.min = 0.1
   # kinship.cutoff.max = 0.4
@@ -630,10 +649,7 @@ leaf_duo_ibd_king_pedigree = function(leaf_data = NULL, ibd.coeff = NULL, kinshi
   putPO$flag[which(apply(putPO[,c(1,2)], 1, function(x) length(unique(leaf_data$sample_data$Year[match(x,leaf_data$sample_data$Sample.Filename)])) == 1))] = "SameYear"
   putPO$Offspring[which(putPO$flag == "SameYear")] = putPO$ID1[which(putPO$flag == "SameYear")]
   putPO$Parent[which(putPO$flag == "SameYear")] = putPO$ID2[which(putPO$flag == "SameYear")]
-  # putPOall = putPO
-  # putPO = putPO[which(putPO$flag == "Pass"),]
-  # putPO$summary = paste0("IBS0:",round(putPO$IBS0,5),",kinship:",round(putPO$kinship,5))
-  
+
   putPed = data.frame(ID = unique(putPO$Offspring), stringsAsFactors = F)
   putPed$Parents = sapply(putPed$ID, function(x) paste(putPO$Parent[which(putPO$Offspring == x)],collapse = "__"))
   putPed$numParents = sapply(putPed$ID, function(x) length(putPO$Parent[which(putPO$Offspring == x)]))
@@ -641,7 +657,6 @@ leaf_duo_ibd_king_pedigree = function(leaf_data = NULL, ibd.coeff = NULL, kinshi
   putPed$Parents.ibs0 = sapply(putPed$ID, function(x) paste(round(putPO$IBS0[which(putPO$Offspring == x)],10),collapse = "__"))
   putPed$Parents.kin = sapply(putPed$ID, function(x) paste(round(putPO$kinship[which(putPO$Offspring == x)],4),collapse = "__"))
   
-  # putPed2 = putPed[which(putPed$numParents <= 2),]
   putPed$Parent1 = sapply(putPed$Parents, function(x) unlist(strsplit(x, split="__"))[1])
   putPed$Parent2 = sapply(putPed$Parents, function(x) unlist(strsplit(x, split="__"))[2])
   putPed$Parent1.IBS0 = sapply(putPed$Parents.ibs0, function(x) unlist(strsplit(x, split="__"))[1])
@@ -664,3 +679,160 @@ leaf_duo_ibd_king_pedigree = function(leaf_data = NULL, ibd.coeff = NULL, kinshi
 
 
 
+######################################################################
+# Consolidate two pedigree dataframes
+leaf_consolidate_pedigrees = function(ped1 = NULL, ped2 = NULL, resolve.conflict = NULL, poFailed = NULL) {
+  # rename colnames
+  colnames(ped1) = c("ID","Parent1","Parent2")
+  colnames(ped2) = c("ID","Parent1","Parent2")
+  
+  # new consolidated pedigree
+  ped = data.frame(ID = unique(c(ped1$ID, ped2$ID)), con.Parent1 = NA, con.Parent2 = NA, ped1.Parent1 = NA, ped1.Parent2 = NA, ped2.Parent1 = NA, ped2.Parent2 = NA, stringsAsFactors = F)
+  ped$ped1.Parent1 = ped1$Parent1[match(ped$ID, ped1$ID)]
+  ped$ped1.Parent2 = ped1$Parent2[match(ped$ID, ped1$ID)]
+  ped$ped2.Parent1 = ped2$Parent1[match(ped$ID, ped2$ID)]
+  ped$ped2.Parent2 = ped2$Parent2[match(ped$ID, ped2$ID)]
+  
+  # clean up cases where parent1 empty but parent2 not empty
+  for(i in 1:nrow(ped)){
+    if(is.na(ped$ped1.Parent1[i]) & (!is.na(ped$ped1.Parent2[i])) ){
+      hold = ped$ped1.Parent2[i]
+      ped$ped1.Parent1[i] = hold
+      ped$ped1.Parent2[i] = NA
+    }
+    if(is.na(ped$ped2.Parent1[i]) & (!is.na(ped$ped2.Parent2[i])) ){
+      hold = ped$ped2.Parent2[i]
+      ped$ped2.Parent1[i] = hold
+      ped$ped2.Parent2[i] = NA
+    }
+  }
+  
+  ped$notes = NA
+  
+  #
+  for(i in 1:nrow(ped)){
+    pedi = as.character(ped[i,c("ped1.Parent1","ped1.Parent2","ped2.Parent1","ped2.Parent2")])
+
+    # 2/2 matches
+    if((length(na.omit(pedi[1:2])) == 2 & length(na.omit(pedi[3:4])) == 2) &
+       identical(sort(pedi[1:2]), sort(pedi[3:4])) )
+      {
+      ped$con.Parent1[i] = pedi[1]
+      ped$con.Parent2[i] = pedi[2]
+      ped$notes[i] = paste(na.omit(c(ped$notes[i], "2/2 matches")), collapse = ";")
+    } else if((length(na.omit(pedi[1:2])) == 2 & length(na.omit(pedi[3:4])) == 2) & 
+              (! identical(sort(pedi[1:2]), sort(pedi[3:4])) ) ) {
+      if(length(table(pedi)) == 4){
+        ped$notes[i] = paste(na.omit(c(ped$notes[i], "0/2 match - ped1 CONFLICT with ped2")), collapse = ";")
+      }
+      if(length(table(pedi)) == 3){
+        ped$notes[i] = paste(na.omit(c(ped$notes[i], "1/2 match - ped1 CONFLICT with ped2")), collapse = ";")
+      }
+      if(resolve.conflict == "ped1"){
+        ped$con.Parent1[i] = pedi[1]
+        ped$con.Parent2[i] = pedi[2]
+      }
+      if(resolve.conflict == "ped2"){
+        ped$con.Parent1[i] = pedi[3]
+        ped$con.Parent2[i] = pedi[4]
+      }
+    }
+    
+    # 1/1 match - ped2 has only 1 parent
+    if((length(na.omit(pedi[1:2])) == 2 & length(na.omit(pedi[3:4])) == 1) & (
+       pedi[1] %in% pedi[3:4] |
+       pedi[2] %in% pedi[3:4] )
+    ){
+      ped$con.Parent1[i] = pedi[1]
+      ped$con.Parent2[i] = pedi[2]
+      ped$notes[i] = paste(na.omit(c(ped$notes[i], "1/1 match - ped2 has only 1 parent")), collapse = ";")
+    } else if((length(na.omit(pedi[1:2])) == 2 & length(na.omit(pedi[3:4])) == 1) & (!(
+      pedi[1] %in% pedi[3:4] |
+      pedi[2] %in% pedi[3:4]) )
+    ){
+      ped$notes[i] = paste(na.omit(c(ped$notes[i], "0/1 match - ped2 CONFLICT with ped1")), collapse = ";")
+      if(resolve.conflict == "ped1"){
+        ped$con.Parent1[i] = pedi[1]
+        ped$con.Parent2[i] = pedi[2]
+      }
+      if(resolve.conflict == "ped2"){
+        ped$con.Parent1[i] = pedi[3]
+        ped$con.Parent2[i] = pedi[4]
+      }
+    }
+    
+    # 1/1 match - ped1 has only 1 parent
+    if((length(na.omit(pedi[1:2])) == 1 & length(na.omit(pedi[3:4])) == 2) & (
+      pedi[3] %in% pedi[1:2] |
+      pedi[4] %in% pedi[1:2] )
+    ){
+      ped$con.Parent1[i] = pedi[3]
+      ped$con.Parent2[i] = pedi[4]
+      ped$notes[i] = paste(na.omit(c(ped$notes[i], "1/1 match - ped1 has only 1 parent")), collapse = ";")
+    } else if((length(na.omit(pedi[1:2])) == 1 & length(na.omit(pedi[3:4])) == 2) & (!(
+      pedi[3] %in% pedi[1:2] |
+      pedi[4] %in% pedi[1:2] ))
+    ){
+      ped$notes[i] = paste(na.omit(c(ped$notes[i], "0/1 match - ped1 CONFLICT with ped2")), collapse = ";")
+      if(resolve.conflict == "ped1"){
+        ped$con.Parent1[i] = pedi[1]
+        ped$con.Parent2[i] = pedi[2]
+      }
+      if(resolve.conflict == "ped2"){
+        ped$con.Parent1[i] = pedi[3]
+        ped$con.Parent2[i] = pedi[4]
+      }
+    }
+    
+    # 0/0 matches - ped1 has 0 parents
+    if(length(na.omit(pedi[1:2])) == 0){
+      ped$con.Parent1[i] = pedi[3]
+      ped$con.Parent2[i] = pedi[4]
+      ped$notes[i] = paste(na.omit(c(ped$notes[i], "0/0 matches - ped1 has 0 parents")), collapse = ";")
+    }
+    
+    # 0/0 matches - ped2 has 0 parents
+    if(length(na.omit(pedi[3:4])) == 0){
+      ped$con.Parent1[i] = pedi[1]
+      ped$con.Parent2[i] = pedi[2]
+      ped$notes[i] = paste(na.omit(c(ped$notes[i], "0/0 matches - ped2 has 0 parents")), collapse = ";")
+    }
+    
+    # 0/1 matches - CONFLICT - ped1 and ped2 each have 1 parent
+    if(length(na.omit(pedi[1:2])) == 1 & 
+       length(na.omit(pedi[3:4])) == 1 & 
+       pedi[1] != pedi[3]){
+      ped$notes[i] = paste(na.omit(c(ped$notes[i], "0/1 matches - CONFLICT - ped1 and ped2 each have 1 parent")), collapse = ";")
+      if(resolve.conflict == "ped1"){
+        ped$con.Parent1[i] = pedi[1]
+        ped$con.Parent2[i] = pedi[2]
+      }
+      if(resolve.conflict == "ped2"){
+        ped$con.Parent1[i] = pedi[3]
+        ped$con.Parent2[i] = pedi[4]
+      }
+    }
+    
+    
+  } # end of for loop
+  #
+  # ped = ped[-which(ped$notes == "2/2 matches"),]
+  if(!is.null(poFailed)){
+    for(i in 1:nrow(ped)){
+      if(paste(sort(c(ped$ID[i],ped$con.Parent1[i])), collapse = "__") %in% poFailed)
+      {
+        ped$con.Parent1[i] = NA
+        ped$notes[i] = paste(na.omit(c(ped$notes[i], "parent1 FAIL by KING")), collapse = ";")
+      }
+      if(paste(sort(c(ped$ID[i],ped$con.Parent2[i])), collapse = "__") %in% poFailed)
+      {
+        ped$con.Parent2[i] = NA
+        ped$notes[i] = paste(na.omit(c(ped$notes[i], "parent2 FAIL by KING")), collapse = ";")
+      }
+    }
+  }
+  
+  return(ped)
+}
+
+#######################################################
